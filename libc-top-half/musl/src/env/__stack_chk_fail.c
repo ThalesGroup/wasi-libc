@@ -1,5 +1,6 @@
 #include <string.h>
 #include <stdint.h>
+#include <unistd.h>
 #if defined(__wasilibc_unmodified_upstream) || defined(_REENTRANT)
 #include "pthread_impl.h"
 #else
@@ -7,25 +8,24 @@
 # include "atomic.h"
 #endif
 
-uintptr_t __stack_chk_guard;
+__asm__(
+	".globaltype __stack_chk_guard, i32\n"
+	".global __stack_chk_guard, __stack_chk_guard\n"
+	"__stack_chk_guard:\n"
+);
 
 void __init_ssp(void *entropy)
 {
-	if (entropy) memcpy(&__stack_chk_guard, entropy, sizeof(uintptr_t));
-	else __stack_chk_guard = (uintptr_t)&__stack_chk_guard * 1103515245;
+	if (!entropy) _exit(1);
 
-#if UINTPTR_MAX >= 0xffffffffffffffff
-	/* Sacrifice 8 bits of entropy on 64bit to prevent leaking/
-	 * overwriting the canary via string-manipulation functions.
-	 * The NULL byte is on the second byte so that off-by-ones can
-	 * still be detected. Endianness is taken care of
-	 * automatically. */
-	((char *)&__stack_chk_guard)[1] = 0;
-#endif
+	__asm__ volatile (
+		"i32.const %0\n"
+		"i32.load 0\n"
+		"global.set __stack_chk_guard\n"
+		:
+		: "r" (entropy)
+	);
 
-#if defined(__wasilibc_unmodified_upstream) || defined(_REENTRANT)
-	__pthread_self()->canary = __stack_chk_guard;
-#endif
 }
 
 void __stack_chk_fail(void)
